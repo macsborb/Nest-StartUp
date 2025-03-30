@@ -5,9 +5,10 @@
   "permissions": ["scripting", "activeTab"],
   "host_permissions": ["https://mail.google.com/*"],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "./js/background.js"
   },
   "action": {
-    "default_popup": "popup.html"
+    "default_popup": "./pages/index.html",
+    "default_icon": "./public/logo.png"
   }
 }
