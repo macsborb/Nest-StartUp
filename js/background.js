@@ -259,10 +259,10 @@ Corps de l'email (début): ${text.substring(0, 100)}...`);
             };
             
             console.log("Payload pour l'API:", payload);
-            console.log("URL complète pour l'analyse:", `${API_URL}/llm/phi`);
+            console.log("URL complète pour l'analyse:", `${API_URL}/llm/phishing`);
             
             // ===== CODE EXACT COMME LE TEST QUI FONCTIONNE =====
-            return fetch(`${API_URL}/llm/phi`, {
+            return fetch(`${API_URL}/llm/phishing`, {
               method: "POST",
               headers: { 
                 "Content-Type": "application/json",
