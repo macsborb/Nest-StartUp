@@ -277,7 +277,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   const checkEmailBtn = document.getElementById('checkEmail');
   if (checkEmailBtn) checkEmailBtn.addEventListener('click', analyzeCurrentEmail);
   const checkLinkBtn = document.getElementById('checkLinks');
-  if (checkLinkBtn) checkLinkBtn.addEventListener('click', checkLinks);
+  if (checkLinkBtn) checkLinkBtn.addEventListener('click', checkCurrentLinks);
   
   // Initialiser l'écouteur de messages
   initMessageListener();
@@ -507,7 +507,7 @@ async function analyzeCurrentEmail() {
         console.log("Exécution du script d'extraction...");
         // 1. Exécuter le script dans l'onglet pour extraire le contenu de l'email
         const results = await chromeAPI.scripting.executeScript({
-            target: { tabId: tab.id },
+        target: { tabId: tab.id },
             function: extractEmailContentOnly, // Fonction modifiée qui retourne le contenu sans faire de messaging
             args: [],
             world: "MAIN" // Exécuter dans le contexte de la page pour accéder au DOM
@@ -783,6 +783,33 @@ function initMessageListener() {
                 });
             }
         }
+        
+        // Ajouter le gestionnaire pour les résultats de vérification des liens
+        else if (message.action === 'linksCheckResult') {
+            const resultElement = document.getElementById('result');
+            
+            // Arrêter l'animation des points
+            if (loadingAnimationInterval) {
+                clearInterval(loadingAnimationInterval);
+                loadingAnimationInterval = null;
+            }
+            
+            if (message.error) {
+                resultElement.textContent = message.error;
+                resultElement.className = 'result-text result-warning';
+        return;
+    }
+
+            const { totalLinks, fraudulentUrls } = message.result;
+            
+            if (fraudulentUrls && fraudulentUrls.length > 0) {
+                resultElement.textContent = `⚠️ ${fraudulentUrls.length} liens suspects détectés sur ${totalLinks} liens !`;
+                resultElement.className = 'result-text result-danger';
+            } else {
+                resultElement.textContent = `✅ Aucun lien suspect détecté sur ${totalLinks} liens vérifiés.`;
+                resultElement.className = 'result-text result-safe';
+            }
+        }
     });
 }
 
@@ -802,44 +829,46 @@ function markSafeLink(linkElement) {
 
 // Fonction pour vérifier les liens sur la page
 async function checkLinks() {
-    console.log("Vérification des liens sur la page...");
-    // Récupère tous les liens sur la page
-    const links = document.querySelectorAll("a[href], iframe[src], form[action]");
-    const urlsToCheck = Array.from(links).map((link) => {
-        if (link.tagName === "A") return link.href;
-        if (link.tagName === "IFRAME") return link.src;
-        if (link.tagName === "FORM") return link.action;
-    });
+    try {
+        console.log("Vérification des liens sur la page...");
+        // Récupère tous les liens sur la page
+        const links = document.querySelectorAll("a[href], iframe[src], form[action]");
+        const urlsToCheck = Array.from(links).map((link) => {
+            if (link.tagName === "A") return link.href;
+            if (link.tagName === "IFRAME") return link.src;
+            if (link.tagName === "FORM") return link.action;
+        }).filter(url => url);
 
-    if (urlsToCheck.length === 0) {
-        return;
-    }
+        if (urlsToCheck.length === 0) {
+            return { totalLinks: 0, fraudulentUrls: [] };
+        }
 
-    // Préparation des données pour l'API
-    const body = {
-        client: {
-            clientId: "night", // Identifiant de votre projet
-            clientVersion: "1.0.0",
-        },
-        threatInfo: {
-            threatTypes: ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APP", "THREAT_TYPE_UNSPECIFIED"],
-            platformTypes: ["ANY_PLATFORM"],
-            threatEntryTypes: ["URL"],
-            threatEntries: urlsToCheck.map((url) => ({ url })),
-        },
-    };
+        // Préparation des données pour l'API
+        const body = {
+            client: {
+                clientId: "night",
+                clientVersion: "1.0.0",
+            },
+            threatInfo: {
+                threatTypes: ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APP", "THREAT_TYPE_UNSPECIFIED"],
+                platformTypes: ["ANY_PLATFORM"],
+                threatEntryTypes: ["URL"],
+                threatEntries: urlsToCheck.map((url) => ({ url })),
+            },
+        };
 
-    // Appel à l'API Safe Browsing   
-    fetch(API_ENDPOINT, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-    })
-    .then((response) => response.json())
-    .then((data) => {
-        console.log(fraudulentUrls)
+        // Appel à l'API Safe Browsing   
+        const response = await fetch(API_ENDPOINT, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+        });
+
+        const data = await response.json();
+        console.log("Réponse de l'API:", data);
+
         const fraudulentUrls = data.matches ? data.matches.map((match) => match.threat.url) : [];
 
         // Marquer les liens en fonction des résultats
@@ -855,11 +884,63 @@ async function checkLinks() {
                 markSafeLink(link);
             }
         });
-    })
-    .catch((error) => {
-        console.error("Error checking links:", error);
-    });
+
+        return {
+            totalLinks: urlsToCheck.length,
+            fraudulentUrls: fraudulentUrls
+        };
+
+    } catch (error) {
+        console.error("Erreur lors de la vérification des liens:", error);
+        throw error;
+    }
 }
 
 // Vérifie les liens dès que le script est exécuté
+
+async function checkCurrentLinks() {
+    try {
+        console.log("Début de la vérification des liens...");
+        
+        // Récupérer l'onglet actif
+        let [tab] = await chromeAPI.tabs.query({ active: true, currentWindow: true });
+        console.log("Onglet actif récupéré:", tab);
+        
+        // Vérifier si l'utilisateur est sur Gmail
+        if (!tab.url.includes('mail.google.com')) {
+            showNotification('Veuillez ouvrir un email Gmail pour vérifier les liens', 'warning');
+            return;
+        }
+        
+        // Afficher le conteneur de résultat
+        document.getElementById('result-container').classList.remove('hidden');
+        const resultElement = document.getElementById('result');
+        resultElement.textContent = 'Vérification des liens en cours';
+        
+        // Démarrer l'animation des points
+        if (loadingAnimationInterval) {
+            clearInterval(loadingAnimationInterval);
+        }
+        loadingAnimationInterval = startLoadingAnimation(resultElement);
+        
+        console.log("Envoi de la demande de vérification des liens...");
+        // Envoyer la demande au background script
+        chrome.runtime.sendMessage({
+            action: 'checkLinks',
+            data: { tabId: tab.id }
+        });
+        
+    } catch (error) {
+        console.error('Erreur lors de la vérification des liens :', error);
+        const resultElement = document.getElementById('result');
+        resultElement.textContent = 'Une erreur est survenue lors de la vérification des liens';
+        resultElement.className = 'result-text result-warning';
+        
+        // Arrêter l'animation des points en cas d'erreur
+        if (loadingAnimationInterval) {
+            clearInterval(loadingAnimationInterval);
+            loadingAnimationInterval = null;
+        }
+    }
+}
 

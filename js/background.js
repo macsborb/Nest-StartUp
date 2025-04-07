@@ -1,4 +1,5 @@
 const API_URL = "https://nest.web-gine.fr";
+const API_ENDPOINT = "https://safebrowsing.googleapis.com/v4/threatMatches:find?key=AIzaSyAP3iAXqYFcRGrZbwF1EGxH8HTxw_Rjkpk";
 
 // Vérifier l'environnement de l'extension
 let isExtensionEnvironment = false;
@@ -55,6 +56,89 @@ function getAuthToken() {
       reject(e);
     }
   });
+}
+
+// Fonction pour marquer les liens frauduleux
+function markFraudulentLink(linkElement) {
+    linkElement.style.border = "2px solid red";
+    linkElement.title = "Ce lien est potentiellement frauduleux";
+}
+
+// Fonction pour marquer les liens sûrs
+function markSafeLink(linkElement) {
+    linkElement.style.border = "2px solid green";
+    linkElement.title = "Ce lien est sûr";
+}
+
+// Fonction pour vérifier les liens sur la page
+async function checkLinks() {
+    try {
+        console.log("Vérification des liens sur la page...");
+        // Récupère tous les liens sur la page
+        const links = document.querySelectorAll("a[href], iframe[src], form[action]");
+        const urlsToCheck = Array.from(links).map((link) => {
+            if (link.tagName === "A") return link.href;
+            if (link.tagName === "IFRAME") return link.src;
+            if (link.tagName === "FORM") return link.action;
+        }).filter(url => url);
+
+        if (urlsToCheck.length === 0) {
+            return { totalLinks: 0, fraudulentUrls: [] };
+        }
+
+        console.log(`${urlsToCheck.length} liens trouvés à vérifier`);
+
+        // Préparation des données pour l'API
+        const body = {
+            client: {
+                clientId: "night",
+                clientVersion: "1.0.0",
+            },
+            threatInfo: {
+                threatTypes: ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APP", "THREAT_TYPE_UNSPECIFIED"],
+                platformTypes: ["ANY_PLATFORM"],
+                threatEntryTypes: ["URL"],
+                threatEntries: urlsToCheck.map((url) => ({ url })),
+            },
+        };
+
+        // Appel à l'API Safe Browsing   
+        const response = await fetch(API_ENDPOINT, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+        });
+
+        const data = await response.json();
+        console.log("Réponse de l'API:", data);
+
+        const fraudulentUrls = data.matches ? data.matches.map((match) => match.threat.url) : [];
+
+        // Marquer les liens en fonction des résultats
+        links.forEach((link) => {
+            let urlToCheck = "";
+            if (link.tagName === "A") urlToCheck = link.href;
+            if (link.tagName === "IFRAME") urlToCheck = link.src;
+            if (link.tagName === "FORM") urlToCheck = link.action; 
+
+            if (fraudulentUrls.includes(urlToCheck)) {
+                markFraudulentLink(link);
+            } else {
+                markSafeLink(link);
+            }
+        });
+
+        return {
+            totalLinks: urlsToCheck.length,
+            fraudulentUrls: fraudulentUrls
+        };
+
+    } catch (error) {
+        console.error("Erreur lors de la vérification des liens:", error);
+        throw error;
+    }
 }
 
 // Écouteur de messages - uniquement si l'environnement le permet
@@ -259,10 +343,10 @@ Corps de l'email (début): ${text.substring(0, 100)}...`);
             };
             
             console.log("Payload pour l'API:", payload);
-            console.log("URL complète pour l'analyse:", `${API_URL}/llm/phishing`);
+            console.log("URL complète pour l'analyse:", `${API_URL}/llm/phi`);
             
             // ===== CODE EXACT COMME LE TEST QUI FONCTIONNE =====
-            return fetch(`${API_URL}/llm/phishing`, {
+            return fetch(`${API_URL}/llm/phi`, {
               method: "POST",
               headers: { 
                 "Content-Type": "application/json",
@@ -334,6 +418,121 @@ Score: ${score}`);
             action: 'logoutResult',
             success: true
           });
+        });
+        
+        return true; // Indique que la réponse sera asynchrone
+      }
+      
+      // Traitement de la vérification des liens
+      else if (message.action === "checkLinks") {
+        console.log("Demande de vérification des liens reçue");
+        
+        // Injecter d'abord les fonctions utilitaires
+        chrome.scripting.executeScript({
+            target: { tabId: message.data.tabId },
+            func: () => {
+                window.API_ENDPOINT = "https://safebrowsing.googleapis.com/v4/threatMatches:find?key=AIzaSyAP3iAXqYFcRGrZbwF1EGxH8HTxw_Rjkpk";
+                
+                window.markFraudulentLink = (linkElement) => {
+                    linkElement.style.border = "2px solid red";
+                    linkElement.title = "Ce lien est potentiellement frauduleux";
+                };
+                
+                window.markSafeLink = (linkElement) => {
+                    linkElement.style.border = "2px solid green";
+                    linkElement.title = "Ce lien est sûr";
+                };
+            }
+        })
+        .then(() => {
+            // Ensuite exécuter la fonction principale de vérification
+            return chrome.scripting.executeScript({
+                target: { tabId: message.data.tabId },
+                func: async () => {
+                    try {
+                        console.log("Vérification des liens sur la page...");
+                        const links = document.querySelectorAll("a[href], iframe[src], form[action]");
+                        const urlsToCheck = Array.from(links).map((link) => {
+                            if (link.tagName === "A") return link.href;
+                            if (link.tagName === "IFRAME") return link.src;
+                            if (link.tagName === "FORM") return link.action;
+                        }).filter(url => url);
+
+                        if (urlsToCheck.length === 0) {
+                            return { totalLinks: 0, fraudulentUrls: [] };
+                        }
+
+                        console.log(`${urlsToCheck.length} liens trouvés à vérifier`);
+
+                        const body = {
+                            client: {
+                                clientId: "night",
+                                clientVersion: "1.0.0",
+                            },
+                            threatInfo: {
+                                threatTypes: ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APP", "THREAT_TYPE_UNSPECIFIED"],
+                                platformTypes: ["ANY_PLATFORM"],
+                                threatEntryTypes: ["URL"],
+                                threatEntries: urlsToCheck.map((url) => ({ url })),
+                            },
+                        };
+
+                        const response = await fetch(window.API_ENDPOINT, {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify(body),
+                        });
+
+                        const data = await response.json();
+                        console.log("Réponse de l'API:", data);
+
+                        const fraudulentUrls = data.matches ? data.matches.map((match) => match.threat.url) : [];
+
+                        links.forEach((link) => {
+                            let urlToCheck = "";
+                            if (link.tagName === "A") urlToCheck = link.href;
+                            if (link.tagName === "IFRAME") urlToCheck = link.src;
+                            if (link.tagName === "FORM") urlToCheck = link.action; 
+
+                            if (fraudulentUrls.includes(urlToCheck)) {
+                                window.markFraudulentLink(link);
+                            } else {
+                                window.markSafeLink(link);
+                            }
+                        });
+
+                        return {
+                            totalLinks: urlsToCheck.length,
+                            fraudulentUrls: fraudulentUrls
+                        };
+
+                    } catch (error) {
+                        console.error("Erreur lors de la vérification des liens:", error);
+                        throw error;
+                    }
+                }
+            });
+        })
+        .then(results => {
+            console.log("Résultats de la vérification des liens:", results);
+            
+            if (results && results[0] && results[0].result) {
+                chrome.runtime.sendMessage({
+                    action: 'linksCheckResult',
+                    result: results[0].result
+                });
+            } else {
+                throw new Error("Résultats de vérification invalides");
+            }
+        })
+        .catch(error => {
+            console.error("Erreur lors de la vérification des liens:", error);
+            chrome.runtime.sendMessage({
+                action: 'linksCheckResult',
+                error: error.message || "Une erreur est survenue lors de la vérification"
+            });
         });
         
         return true; // Indique que la réponse sera asynchrone
