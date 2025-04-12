@@ -2,7 +2,8 @@
   "manifest_version": 3,
   "name": "Email Analyzer",
   "version": "1.0",
-  "permissions": ["scripting", "activeTab", "storage"],
+  "permissions": ["scripting", "activeTab", "storage", "tabs",
+  "https://safebrowsing.googleapis.com/*"],
   "host_permissions": ["https://mail.google.com/*"],
   "background": {
     "service_worker": "./js/background.js"

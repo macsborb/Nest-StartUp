@@ -868,17 +868,16 @@ async function checkLinks() {
 
         const data = await response.json();
         console.log("Réponse de l'API:", data);
-
-        const fraudulentUrls = data.matches ? data.matches.map((match) => match.threat.url) : [];
-
+        
         // Marquer les liens en fonction des résultats
-        links.forEach((link) => {
-            let urlToCheck = "";
-            if (link.tagName === "A") urlToCheck = link.href;
-            if (link.tagName === "IFRAME") urlToCheck = link.src;
-            if (link.tagName === "FORM") urlToCheck = link.action; 
+        const fraudulentUrls = data.matches ? data.matches.map(match => match.threat.url || match.threat.urlPattern || match.threat.urlSuffix) : [];
 
-            if (fraudulentUrls.includes(urlToCheck)) {
+        links.forEach((link) => {
+            let urlToCheck = link.tagName === "A" ? link.href :
+                             link.tagName === "IFRAME" ? link.src :
+                             link.tagName === "FORM" ? link.action : "";
+        
+            if (fraudulentUrls.some(fraudUrl => urlToCheck.includes(fraudUrl))) {
                 markFraudulentLink(link);
             } else {
                 markSafeLink(link);
