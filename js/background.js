@@ -73,9 +73,11 @@ function markSafeLink(linkElement) {
 // Fonction pour vérifier les liens sur la page
 async function checkLinks() {
     try {
+
         console.log("Vérification des liens sur la page...");
         // Récupère tous les liens sur la page
-        const links = document.querySelectorAll("a[href], iframe[src], form[action]");
+        
+        const links = document.querySelectorAll("div.a3s.aiL a[href], div.a3s.aiL iframe[src], div.a3s.aiL form[action]");
         const urlsToCheck = Array.from(links).map((link) => {
             if (link.tagName === "A") return link.href;
             if (link.tagName === "IFRAME") return link.src;
@@ -451,7 +453,7 @@ Score: ${score}`);
                 func: async () => {
                     try {
                         console.log("Vérification des liens sur la page...");
-                        const links = document.querySelectorAll("a[href], iframe[src], form[action]");
+                        const links = document.querySelectorAll("div.a3s.aiL a[href], div.a3s.aiL iframe[src], div.a3s.aiL form[action]");
                         const urlsToCheck = Array.from(links).map((link) => {
                             if (link.tagName === "A") return link.href;
                             if (link.tagName === "IFRAME") return link.src;
