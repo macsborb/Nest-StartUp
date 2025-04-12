@@ -829,70 +829,79 @@ function markSafeLink(linkElement) {
 
 // Fonction pour vérifier les liens sur la page
 async function checkLinks() {
-    try {
-        console.log("Vérification des liens sur la page...");
-        // Récupère tous les liens sur la page
-        const links = document.querySelectorAll("a[href], iframe[src], form[action]");
-        const urlsToCheck = Array.from(links).map((link) => {
-            if (link.tagName === "A") return link.href;
-            if (link.tagName === "IFRAME") return link.src;
-            if (link.tagName === "FORM") return link.action;
-        }).filter(url => url);
+  try {
+      console.log("Vérification des liens sur la page...");
+      const links = document.querySelectorAll("a[href], iframe[src], form[action]");
+      const urlsToCheck = Array.from(links).map(link => {
+          if (link.tagName === "A") return link.href;
+          if (link.tagName === "IFRAME") return link.src;
+          if (link.tagName === "FORM") return link.action;
+      }).filter(url => url);
 
-        if (urlsToCheck.length === 0) {
-            return { totalLinks: 0, fraudulentUrls: [] };
-        }
+      if (urlsToCheck.length === 0) {
+          return { totalLinks: 0, fraudulentUrls: [] };
+      }
 
-        // Préparation des données pour l'API
-        const body = {
-            client: {
-                clientId: "night",
-                clientVersion: "1.0.0",
-            },
-            threatInfo: {
-                threatTypes: ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APP", "THREAT_TYPE_UNSPECIFIED"],
-                platformTypes: ["ANY_PLATFORM"],
-                threatEntryTypes: ["URL"],
-                threatEntries: urlsToCheck.map((url) => ({ url })),
-            },
-        };
+      const body = {
+          client: {
+              clientId: "night",
+              clientVersion: "1.0.0",
+          },
+          threatInfo: {
+              threatTypes: ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APP", "THREAT_TYPE_UNSPECIFIED"],
+              platformTypes: ["ANY_PLATFORM"],
+              threatEntryTypes: ["URL"],
+              threatEntries: urlsToCheck.map(url => ({ url })),
+          },
+      };
 
-        // Appel à l'API Safe Browsing   
-        const response = await fetch(API_ENDPOINT, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(body),
-        });
+      const response = await fetch(API_ENDPOINT, {
+          method: "POST",
+          headers: {
+              "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+      });
 
-        const data = await response.json();
-        console.log("Réponse de l'API:", data);
-        
-        // Marquer les liens en fonction des résultats
-        const fraudulentUrls = data.matches ? data.matches.map(match => match.threat.url || match.threat.urlPattern || match.threat.urlSuffix) : [];
+      const data = await response.json();
+      console.log("Réponse de l'API:", data);
 
-        links.forEach((link) => {
-            let urlToCheck = link.tagName === "A" ? link.href :
-                             link.tagName === "IFRAME" ? link.src :
-                             link.tagName === "FORM" ? link.action : "";
-        
-            if (fraudulentUrls.some(fraudUrl => urlToCheck.includes(fraudUrl))) {
-                markFraudulentLink(link);
-            } else {
-                markSafeLink(link);
-            }
-        });
+      // Pour le débuggage, log les URLs envoyées et la réponse reçue
+      console.log("URLs envoyées:", urlsToCheck);
 
-        return {
-            totalLinks: urlsToCheck.length,
-            fraudulentUrls: fraudulentUrls
-        };
+      let fraudulentUrls = [];
+      if (data.matches) {
+          fraudulentUrls = data.matches.map(match => match.threat.url || match.threat.urlPattern || match.threat.urlSuffix);
+      } else {
+          console.warn("Aucune menace détectée par l'API pour les URLs fournies.");
+      }
 
-    } catch (error) {
-        console.error("Erreur lors de la vérification des liens:", error);
-        throw error;
-    }
+      // Option pour tester la détection : décommenter pour forcer une alerte sur testsafebrowsing.appspot.com
+      // fraudulentUrls.push("testsafebrowsing.appspot.com");
+
+      links.forEach(link => {
+          let urlToCheck = "";
+          if (link.tagName === "A") urlToCheck = link.href;
+          if (link.tagName === "IFRAME") urlToCheck = link.src;
+          if (link.tagName === "FORM") urlToCheck = link.action;
+
+          // Normaliser l'URL (par exemple, retirer le trailing slash, etc.) si nécessaire
+          // Ici, on utilise includes() pour simplifier
+          if (fraudulentUrls.some(fraudUrl => urlToCheck.includes(fraudUrl))) {
+              markFraudulentLink(link);
+          } else {
+              markSafeLink(link);
+          }
+      });
+
+      return {
+          totalLinks: urlsToCheck.length,
+          fraudulentUrls: fraudulentUrls
+      };
+  } catch (error) {
+      console.error("Erreur lors de la vérification des liens:", error);
+      throw error;
+  }
 }
 
 // Vérifie les liens dès que le script est exécuté
