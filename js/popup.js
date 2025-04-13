@@ -813,8 +813,6 @@ function initMessageListener() {
     });
 }
 
-const API_ENDPOINT = "https://safebrowsing.googleapis.com/v4/threatMatches:find?key=AIzaSyAP3iAXqYFcRGrZbwF1EGxH8HTxw_Rjkpk";
-
 // Fonction pour marquer les liens frauduleux
 function markFraudulentLink(linkElement) {
     linkElement.style.border = "2px solid red";
@@ -827,7 +825,7 @@ function markSafeLink(linkElement) {
     linkElement.title = "This link is safe";
 }
 
-// Fonction pour vérifier les liens sur la page
+// Fonction pour vérifier les liens sur la page via l'API Web Risk Lookup
 async function checkLinks() {
   try {
       console.log("Vérification des liens sur la page...");
@@ -842,51 +840,48 @@ async function checkLinks() {
           return { totalLinks: 0, fraudulentUrls: [] };
       }
 
-      const body = {
-          client: {
-              clientId: "night",
-              clientVersion: "1.0.0",
-          },
-          threatInfo: {
-              threatTypes: ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APP", "THREAT_TYPE_UNSPECIFIED"],
-              platformTypes: ["ANY_PLATFORM"],
-              threatEntryTypes: ["URL"],
-              threatEntries: urlsToCheck.map(url => ({ url })),
-          },
-      };
+      // Définition des types de menace à vérifier (séparés par des virgules)
+      const threatTypes = "MALWARE,SOCIAL_ENGINEERING,UNWANTED_SOFTWARE,POTENTIALLY_HARMFUL_APP";
 
-      const response = await fetch(API_ENDPOINT, {
-          method: "POST",
-          headers: {
-              "Content-Type": "application/json",
-          },
-          body: JSON.stringify(body),
-      });
+      // Pour chaque URL, effectue une requête GET vers l'API Web Risk
+      const checkResults = await Promise.all(
+          urlsToCheck.map(async (url) => {
+              // Construit l'URL de la requête en ajoutant les paramètres nécessaires
+              const queryUrl = `https://webrisk.googleapis.com/v1/uris:search?threatTypes=MALWARE&threatTypes=SOCIAL_ENGINEERING&threatTypes=UNWANTED_SOFTWARE&uri=${encodeURIComponent(url)}&threatTypes=${encodeURIComponent(threatTypes)}&key=AIzaSyAP3iAXqYFcRGrZbwF1EGxH8HTxw_Rjkpk`;
+              try {
+                  const response = await fetch(queryUrl);
+                  const data = await response.json();
+                  console.log(`Réponse de l'API pour ${url}:`, data);
+                  // Si l’API retourne une propriété 'threat', alors la menace a été détectée
+                  if (data && data.threat) {
+                      return { url, threat: data.threat };
+                  } else {
+                      return { url, threat: null };
+                  }
+              } catch (error) {
+                  console.error(`Erreur lors de la vérification de ${url}:`, error);
+                  return { url, threat: null, error: error.message };
+              }
+          })
+      );
 
-      const data = await response.json();
-      console.log("Réponse de l'API:", data);
+      // Création d'un tableau des URLs considérées comme frauduleuses
+      let fraudulentUrls = checkResults
+          .filter(result => result.threat !== null)
+          .map(result => result.url);
 
-      // Pour le débuggage, log les URLs envoyées et la réponse reçue
+      // Debug : log des URLs envoyées et des résultats d'analyse
       console.log("URLs envoyées:", urlsToCheck);
+      console.log("Résultats d'analyse:", checkResults);
 
-      let fraudulentUrls = [];
-      if (data.matches) {
-          fraudulentUrls = data.matches.map(match => match.threat.url || match.threat.urlPattern || match.threat.urlSuffix);
-      } else {
-          console.warn("Aucune menace détectée par l'API pour les URLs fournies.");
-      }
-
-      // Option pour tester la détection : décommenter pour forcer une alerte sur testsafebrowsing.appspot.com
-      // fraudulentUrls.push("testsafebrowsing.appspot.com");
-
+      // Parcours de chaque lien pour marquer en fonction du résultat
       links.forEach(link => {
           let urlToCheck = "";
           if (link.tagName === "A") urlToCheck = link.href;
           if (link.tagName === "IFRAME") urlToCheck = link.src;
           if (link.tagName === "FORM") urlToCheck = link.action;
 
-          // Normaliser l'URL (par exemple, retirer le trailing slash, etc.) si nécessaire
-          // Ici, on utilise includes() pour simplifier
+          // Vous pouvez normaliser l'URL ici si nécessaire
           if (fraudulentUrls.some(fraudUrl => urlToCheck.includes(fraudUrl))) {
               markFraudulentLink(link);
           } else {
@@ -905,7 +900,6 @@ async function checkLinks() {
 }
 
 // Vérifie les liens dès que le script est exécuté
-
 async function checkCurrentLinks() {
     try {
         console.log("Début de la vérification des liens...");
