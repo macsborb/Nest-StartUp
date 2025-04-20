@@ -243,3 +243,12 @@ input:focus {
 .theme-toggle svg {
   fill: var(--primary);
 }
+
+.subscription-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+  padding: 12px;
+  border-top: 1px solid black;
+}
